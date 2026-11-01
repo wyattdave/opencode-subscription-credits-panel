@@ -1,0 +1,60 @@
+{
+  "name": "opencode-subscription-credits-panel",
+  "version": "0.1.0",
+  "description": "OpenCode Desktop side panel showing ChatGPT/Codex, GitHub Copilot and Claude Code usage.",
+  "license": "MIT",
+  "author": "David Wyatt <davedidisco@gmail.com>",
+  "type": "module",
+  "homepage": "https://github.com/wyattdave/opencode-subscription-credits-panel#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wyattdave/opencode-subscription-credits-panel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wyattdave/opencode-subscription-credits-panel/issues"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "usage",
+    "credits",
+    "limits",
+    "codex",
+    "chatgpt",
+    "copilot",
+    "claude"
+  ],
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./rpc": "./rpc.mjs",
+    "./gui-experimental": "./dist/gui-experimental.cjs"
+  },
+  "files": [
+    "index.mjs",
+    "rpc.mjs",
+    "providers.mjs",
+    "codex-login.mjs",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "probe": "node scripts/probe.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test scripts/codex-browser-login.test.mjs",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "solid-js": "^1.9.15",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7",
+    "vite-plugin-solid": "^2.11.10"
+  }
+}
