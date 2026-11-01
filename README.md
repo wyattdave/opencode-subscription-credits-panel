@@ -8,7 +8,30 @@ normalized usage numbers — raw tokens never cross the RPC boundary.
 
 ## Install
 
-### From npm
+### One-command setup (npx)
+
+```powershell
+npx opencode-subscription-credits-panel
+```
+
+That's it. The installer registers the plugin in your global OpenCode config
+(`~/.config/opencode/opencode.json(c)`, `OPENCODE_CONFIG`, or `--config <path>`),
+backing up the previous file first. OpenCode then installs the package from npm
+by itself — the GUI bundle ships prebuilt, so no local build step is needed.
+Older manual installs (a local path entry such as `~/.opencode-plugins/opencode-credits`)
+are migrated to the package name automatically, and duplicate entries are
+cleaned up.
+
+To undo:
+
+```powershell
+npx opencode-subscription-credits-panel remove
+```
+
+Finish by restarting OpenCode (`opencode service restart`) if it is running,
+then open the session side panel and click **+** → **Account usage**.
+
+### From npm (manual)
 
 Add the package name to your OpenCode plugin config:
 

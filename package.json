@@ -25,12 +25,16 @@
     "claude"
   ],
   "main": "./index.mjs",
+  "bin": {
+    "opencode-subscription-credits-panel": "./bin/setup.mjs"
+  },
   "exports": {
     ".": "./index.mjs",
     "./rpc": "./rpc.mjs",
     "./gui-experimental": "./dist/gui-experimental.cjs"
   },
   "files": [
+    "bin",
     "index.mjs",
     "rpc.mjs",
     "providers.mjs",
@@ -44,7 +48,7 @@
     "dev": "vite build --watch",
     "probe": "node scripts/probe.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test scripts/codex-browser-login.test.mjs",
+    "test": "node --test scripts/codex-browser-login.test.mjs bin/setup.test.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
