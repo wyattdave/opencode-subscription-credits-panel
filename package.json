@@ -1,7 +1,7 @@
 {
   "name": "opencode-subscription-credits-panel",
-  "version": "0.2.0",
-  "description": "OpenCode Desktop side panel showing ChatGPT/Codex, GitHub Copilot, Claude Code and OpenCode Go usage.",
+  "version": "0.3.0",
+  "description": "OpenCode Desktop usage panel for ChatGPT/Codex, GitHub Copilot, Claude Code, OpenCode Go and Cursor, with provider visibility settings.",
   "license": "MIT",
   "author": "David Wyatt <davedidisco@gmail.com>",
   "type": "module",
@@ -22,7 +22,8 @@
     "codex",
     "chatgpt",
     "copilot",
-    "claude"
+    "claude",
+    "cursor"
   ],
   "main": "./index.mjs",
   "bin": {

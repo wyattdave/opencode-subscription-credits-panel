@@ -43,6 +43,131 @@
   line-height: 1.25;
 }
 
+.oc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.oc-settings-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font-size: 19px;
+  cursor: pointer;
+}
+
+.oc-settings-button:hover,
+.oc-settings-button[aria-expanded="true"] {
+  background: color-mix(in srgb, currentColor 7%, transparent);
+  border-color: var(--oc-line);
+}
+
+.oc-settings-button:focus-visible,
+.oc-text-button:focus-visible,
+.oc-provider-toggle input:focus-visible {
+  outline: 2px solid var(--oc-ok);
+  outline-offset: 3px;
+}
+
+.oc-settings,
+.oc-empty {
+  margin-bottom: 14px;
+  padding: 13px;
+  border: 1px solid var(--oc-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, currentColor 3%, transparent);
+}
+
+.oc-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.oc-settings h2,
+.oc-empty h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.oc-settings p,
+.oc-empty p {
+  margin: 3px 0 0;
+  font-size: 10.5px;
+  opacity: 0.6;
+}
+
+.oc-text-button {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.oc-provider-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 36px;
+  gap: 12px;
+  border-bottom: 1px solid var(--oc-line);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.oc-provider-toggle input {
+  appearance: none;
+  width: 28px;
+  height: 16px;
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: 999px;
+  border: 1px solid var(--oc-line);
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  cursor: pointer;
+}
+
+.oc-provider-toggle input::before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 2px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.oc-provider-toggle input:checked {
+  background: color-mix(in srgb, var(--oc-ok) 30%, transparent);
+  border-color: var(--oc-ok);
+}
+
+.oc-provider-toggle input:checked::before {
+  transform: translateX(12px);
+  background: var(--oc-ok);
+}
+
+.oc-settings .oc-settings-footnote {
+  margin-top: 10px;
+  font-size: 10px;
+}
+
 .oc-tagline {
   margin: 3px 0 0;
   font-size: 11px;
@@ -89,6 +214,10 @@
 
 .oc-card.oc-go {
   --oc-accent: #5599cc;
+}
+
+.oc-card.oc-cursor {
+  --oc-accent: #979b9f;
 }
 
 .oc-card-head {

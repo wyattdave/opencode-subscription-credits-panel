@@ -19,6 +19,14 @@ const CLAUDE_PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile'
 
 const COPILOT_USAGE_URL = 'https://api.github.com/copilot_internal/user'
 const GO_USAGE_URL = 'https://opencode.ai/zen/go/v1/usage'
+const CURSOR_USAGE_URL = 'https://cursor.com/api/usage-summary'
+
+const CURSOR_STATE_FILE = process.platform === 'win32'
+  ? join(process.env.APPDATA ?? join(HOME, 'AppData', 'Roaming'), 'Cursor', 'User', 'globalStorage', 'state.vscdb')
+  : process.platform === 'darwin'
+    ? join(HOME, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb')
+    : join(process.env.XDG_CONFIG_HOME ?? join(HOME, '.config'), 'Cursor', 'User', 'globalStorage', 'state.vscdb')
+const CURSOR_AGENT_FILE = join(process.env.XDG_CONFIG_HOME ?? join(HOME, '.config'), 'cursor', 'auth.json')
 
 const CODEX_AUTH_FILE = join(HOME, '.codex', 'auth.json')
 const CLAUDE_CREDENTIALS_FILE = join(HOME, '.claude', '.credentials.json')
@@ -38,9 +46,10 @@ const PROVIDER_NAMES = {
   copilot: 'GitHub Copilot',
   claude: 'Claude Code',
   go: 'OpenCode Go',
+  cursor: 'Cursor',
 }
 
-const PROVIDER_ORDER = ['codex', 'copilot', 'claude', 'go']
+const PROVIDER_ORDER = ['codex', 'copilot', 'claude', 'go', 'cursor']
 
 let cache = null
 let inflight = null
@@ -874,7 +883,120 @@ async function loadClaude() {
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot API
+// Cursor — read-only local sign-in; never renew or overwrite Cursor credentials.
+
+export function cursorSession(token) {
+  if (typeof token !== 'string') return null
+  // A manual session may be supplied as the cookie value or as the app JWT.
+  try { token = decodeURIComponent(token.trim()) } catch { return null }
+  const parts = token.split('::')
+  const accessToken = parts.at(-1)
+  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(accessToken)) return null
+  const payload = decodeJwt(accessToken)
+  const userID = typeof payload?.sub === 'string' ? payload.sub.split('|').at(-1) : null
+  if (!userID || !/^[A-Za-z0-9._-]+$/.test(userID) || asNumber(payload.exp) === null) return null
+  if (parts.length > 1 && (parts.length !== 2 || parts[0] !== userID)) return null
+  return {
+    cookie: `WorkosCursorSessionToken=${encodeURIComponent(`${userID}::${accessToken}`)}`,
+    expiresAt: payload.exp * 1000,
+    email: typeof payload.email === 'string' ? payload.email : null,
+  }
+}
+
+export async function readCursorState(file = CURSOR_STATE_FILE) {
+  if (!existsSync(file)) return null
+  let db
+  try {
+    const { DatabaseSync } = await import('node:sqlite')
+    db = new DatabaseSync(file, { readOnly: true })
+    const row = db.prepare("SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken' LIMIT 1").get()
+    const value = row?.value
+    if (typeof value === 'string') return value
+    if (value instanceof Uint8Array) {
+      const bytes = Buffer.from(value)
+      return bytes.includes(0) ? bytes.toString('utf16le').replace(/^\uFEFF/, '') : bytes.toString('utf8')
+    }
+  } catch {
+    // Locked, encrypted or unsupported stores need a new Cursor sign-in/manual session.
+  } finally {
+    db?.close()
+  }
+  return null
+}
+
+async function readCursorCredential() {
+  const manual = process.env.CURSOR_SESSION_TOKEN
+  if (manual !== undefined) return { session: cursorSession(manual), source: 'CURSOR_SESSION_TOKEN' }
+  const app = cursorSession(await readCursorState())
+  if (app && app.expiresAt > Date.now() + 60_000) return { session: app, source: 'Cursor app' }
+  let agent = null
+  try { agent = cursorSession(JSON.parse(readFileSync(CURSOR_AGENT_FILE, 'utf8')).accessToken) } catch { /* not installed */ }
+  return { session: agent ?? app, source: agent ? 'Cursor CLI' : 'Cursor app' }
+}
+
+export function cursorWindows(body) {
+  const windows = []
+  const resetAt = toIso(body?.billingCycleEnd)
+  const plan = body?.individualUsage?.plan
+  const money = (cents) => `$${(cents / 100).toFixed(2)}`
+  const add = (id, label, raw, percent = null) => {
+    const used = asNumber(raw?.used)
+    const limit = asNumber(raw?.limit)
+    const usedPercent = clampPercent(percent ?? (used !== null && limit > 0 ? used / limit * 100 : null))
+    if (usedPercent === null) return
+    windows.push({
+      id, label, usedPercent, remainingPercent: 100 - usedPercent,
+      remaining: null, entitlement: null, resetAt, unlimited: false,
+      detail: used !== null && limit > 0 ? `${money(used)} of ${money(limit)} used` : null,
+    })
+  }
+  add('included', 'Included plan', plan, asNumber(plan?.totalPercentUsed))
+  if (!windows.length) add('overall', 'Personal allowance', body?.individualUsage?.overall)
+  if (!windows.length) add('pooled', 'Shared team allowance', body?.teamUsage?.pooled)
+  add('auto', 'Cursor models', null, asNumber(plan?.autoPercentUsed))
+  add('api', 'Third-party models', null, asNumber(plan?.apiPercentUsed))
+  add('on-demand', 'On-demand budget', body?.individualUsage?.onDemand)
+  return windows
+}
+
+async function loadCursor() {
+  const { session, source } = await readCursorCredential()
+  if (!session) return baseProvider('cursor', {
+    status: 'signin', source,
+    message: 'Sign in to the Cursor app or run `cursor-agent login`, then refresh. Encrypted app credentials need CURSOR_SESSION_TOKEN (your cursor.com session cookie value) set on the OpenCode server.',
+  })
+  const identity = { source, account: session.email }
+  if (session.expiresAt <= Date.now() + 60_000) return baseProvider('cursor', {
+    ...identity, status: 'expired', message: 'Cursor sign-in has expired. Open Cursor or run `cursor-agent login` to sign in again.',
+  })
+  let response
+  try {
+    response = await fetchResponse(CURSOR_USAGE_URL, {
+      headers: { Cookie: session.cookie, Accept: 'application/json', 'User-Agent': 'opencode-subscription-credits-panel' },
+      redirect: 'error',
+    })
+  } catch {
+    return baseProvider('cursor', { ...identity, message: 'Could not reach Cursor usage. Please retry.' })
+  }
+  if ([401, 403].includes(response.status)) return baseProvider('cursor', {
+    ...identity, status: 'expired', message: 'Cursor rejected this session. Sign in to Cursor again, then refresh.',
+  })
+  if (!response.ok) return baseProvider('cursor', {
+    ...identity, message: `Cursor usage request failed (HTTP ${response.status}).`,
+  })
+  const windows = cursorWindows(response.body)
+  const spent = asNumber(response.body?.individualUsage?.onDemand?.used)
+  return baseProvider('cursor', {
+    ...identity, status: windows.length ? 'ok' : 'unavailable',
+    plan: typeof response.body?.membershipType === 'string' ? `Cursor ${response.body.membershipType}` : null,
+    windows,
+    note: spent !== null ? `On-demand spend this cycle: $${(spent / 100).toFixed(2)}` : null,
+    message: windows.length ? null : 'Cursor did not report a supported allowance for this account. Check your usage at cursor.com/dashboard.',
+  })
+}
+
+// ---------------------------------------------------------------------------
+// OpenCode Go
 
 export function goWindows(usage) {
   return [
@@ -945,6 +1067,7 @@ const LOADERS = {
   copilot: loadCopilot,
   claude: loadClaude,
   go: loadGo,
+  cursor: loadCursor,
 }
 
 function publicSnapshot() {
@@ -1006,4 +1129,6 @@ export const __paths = {
   copilotHosts: COPILOT_HOSTS_FILES,
   db: DB_CANDIDATES,
   dayMs: DAY_MS,
+  cursorState: CURSOR_STATE_FILE,
+  cursorAgent: CURSOR_AGENT_FILE,
 }

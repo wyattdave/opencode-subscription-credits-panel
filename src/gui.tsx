@@ -1,8 +1,10 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
-import { Command, MenuItem, Panel, Plugin, Style } from '@opencode/plugin/gui'
+import { createSignal, createUniqueId, For, onCleanup, onMount, Show } from 'solid-js'
+import { Command, MenuItem, Panel, Plugin, Store, Style } from '@opencode/plugin/gui'
+import { Schema } from 'effect'
 import { Credits } from '../rpc.mjs'
 import css from './panel.css?inline'
 import { usedText } from './usage-text.mjs'
+import { setProviderVisible, visibleProviders } from './visibility.mjs'
 
 type UsageWindow = {
   id: string
@@ -17,7 +19,7 @@ type UsageWindow = {
 }
 
 type Provider = {
-  id: 'codex' | 'copilot' | 'claude' | 'go'
+  id: 'codex' | 'copilot' | 'claude' | 'go' | 'cursor'
   name: string
   status: 'ok' | 'expired' | 'signin' | 'error' | 'loading' | 'unavailable'
   plan: string | null
@@ -41,7 +43,16 @@ const ICONS: Record<Provider['id'], string> = {
   copilot: 'github',
   claude: 'brain',
   go: 'terminal',
+  cursor: 'terminal',
 }
+
+const PROVIDERS = [
+  { id: 'codex', name: 'ChatGPT / Codex' },
+  { id: 'copilot', name: 'GitHub Copilot' },
+  { id: 'claude', name: 'Claude Code' },
+  { id: 'go', name: 'OpenCode Go' },
+  { id: 'cursor', name: 'Cursor' },
+]
 
 const PLAN_LABELS: Record<string, string> = {
   plus: 'ChatGPT Plus',
@@ -59,6 +70,9 @@ const PLAN_LABELS: Record<string, string> = {
 }
 
 export default Plugin.define({
+  stores: {
+    visibility: Store.global(Schema.Struct({ hidden: Schema.Array(Schema.String) }), { hidden: [] }),
+  },
   i18n: {
     en: {
       'menu.title': 'Account usage',
@@ -90,7 +104,7 @@ export default Plugin.define({
         menu: 'session.panel' as const,
         id: 'credits',
         title: ctx.t('menu.title'),
-        description: 'Codex · Copilot · Claude · Go',
+        description: 'Codex · Copilot · Claude · Go · Cursor',
         icon: 'window-analytics' as const,
         opened: Boolean(session && ctx.layout.state(`${ctx.id}:credits`, session) !== 'closed'),
         run: open,
@@ -131,6 +145,13 @@ function CreditsPanel(props: { ctx: any; session: any }) {
   const [data, setData] = createSignal<Snapshot | null>(null)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal('')
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
+  const settingsID = `oc-provider-settings-${createUniqueId()}`
+  const hidden = () => props.ctx.stores.visibility.value.hidden
+  const setVisible = (id: string, visible: boolean) => {
+    props.ctx.stores.visibility.set({ hidden: setProviderVisible(hidden(), id, visible) })
+  }
+  const providers = () => visibleProviders(data()?.providers ?? [], hidden())
   let disposed = false
 
   const client = () => props.session.server.client.rpc(Credits)
@@ -173,16 +194,55 @@ function CreditsPanel(props: { ctx: any; session: any }) {
         <div>
           <p class="oc-eyebrow">Accounts</p>
           <h1>{props.ctx.t('panel.title')}</h1>
-           <p class="oc-tagline">ChatGPT · Copilot · Claude · Go</p>
+          <p class="oc-tagline">Your subscriptions, at a glance</p>
         </div>
-        <props.ctx.ui.IconButton
-          icon="refresh"
-          label={props.ctx.t('panel.refresh')}
-          size="normal"
-          busy={busy()}
-          onClick={() => void load(true)}
-        />
+        <div class="oc-header-actions">
+          <button
+            type="button"
+            class="oc-settings-button"
+            title="Provider settings"
+            aria-label="Provider settings"
+            aria-expanded={settingsOpen()}
+            aria-controls={settingsID}
+            onClick={() => setSettingsOpen(!settingsOpen())}
+          >
+            <span aria-hidden="true">⚙</span>
+          </button>
+          <props.ctx.ui.IconButton
+            icon="refresh"
+            label={props.ctx.t('panel.refresh')}
+            size="normal"
+            busy={busy()}
+            onClick={() => void load(true)}
+          />
+        </div>
       </header>
+
+      <Show when={settingsOpen()}>
+        <section class="oc-settings" id={settingsID} aria-label="Provider settings">
+          <div class="oc-settings-heading">
+            <div>
+              <h2>Visible providers</h2>
+              <p>Choose the accounts shown in this panel.</p>
+            </div>
+            <button type="button" class="oc-text-button" onClick={() => props.ctx.stores.visibility.set({ hidden: [] })}>Show all</button>
+          </div>
+          <For each={PROVIDERS}>
+            {(provider) => (
+              <label class="oc-provider-toggle">
+                <span>{provider.name}</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={!hidden().includes(provider.id)}
+                  onChange={(event) => setVisible(provider.id, event.currentTarget.checked)}
+                />
+              </label>
+            )}
+          </For>
+          <p class="oc-settings-footnote">Saved automatically for all sessions on this device. Hiding a card does not disconnect its account.</p>
+        </section>
+      </Show>
 
       <Show when={error()}>
         <div class="oc-banner oc-banner-error" role="alert">
@@ -205,7 +265,14 @@ function CreditsPanel(props: { ctx: any; session: any }) {
             <p class="oc-updated" role="status">
               {busy() ? 'Refreshing accounts…' : `Updated ${relativeTime(snapshot().fetchedAt)}`}
             </p>
-            <For each={snapshot().providers}>
+            <Show when={providers().length === 0}>
+              <div class="oc-empty" role="status">
+                <h2>No providers shown</h2>
+                <p>Your accounts are hidden, not disconnected.</p>
+                <button type="button" class="oc-command" onClick={() => setSettingsOpen(true)}>Choose providers</button>
+              </div>
+            </Show>
+            <For each={providers()}>
               {(provider) => <ProviderCard ctx={props.ctx} provider={provider} onSignedIn={() => load(true)} />}
             </For>
           </>

@@ -1,7 +1,7 @@
 # opencode-subscription-credits-panel
 
 An OpenCode Desktop side-panel plugin that shows remaining account usage for
-**ChatGPT / Codex**, **GitHub Copilot**, **Claude Code**, and **OpenCode Go**.
+**ChatGPT / Codex**, **GitHub Copilot**, **Claude Code**, **OpenCode Go**, and **Cursor**.
 Copilot shows both the percentage of allowance used and the request count.
 Go shows its reported 5-hour, weekly, and monthly allowance percentages and resets.
 Free-model allowances are not shown: no reliable account-wide usage counter is available.
@@ -71,6 +71,17 @@ click **+** to see **Account usage** (restart the desktop app if it is missing).
 In any session, open the side panel and click **+** → **Account usage**.
 A `Refresh` button re-queries all providers; auto-refresh runs on open.
 
+Click the **⚙ Provider settings** button beside Refresh to hide or show individual
+providers. Changes save automatically in OpenCode's app-wide plugin store and
+survive closing the panel or reloading OpenCode. **Show all** restores every card;
+if all are hidden, **Choose providers** brings the settings back. These are display
+preferences: hidden accounts remain connected and are still included in refreshes.
+
+Cursor shows the allowance percentages, billing-cycle reset, and on-demand spend
+reported by its usage-summary API. It supports included-plan and individual/shared
+team allowance data; unsupported plan shapes show **Unavailable**, not a guessed
+balance. Cursor's private dashboard API may change.
+
 ## Where credentials come from
 
 | Provider | Source |
@@ -79,6 +90,20 @@ A `Refresh` button re-queries all providers; auto-refresh runs on open.
 | GitHub Copilot | OpenCode SQLite credential store (`github-copilot`), legacy `hosts.json`, env vars |
 | Claude Code | `~/.claude/.credentials.json`, `CLAUDE_CODE_OAUTH_TOKEN` |
 | OpenCode Go | OpenCode SQLite credential store (`opencode`, then `opencode-go`), `OPENCODE_GO_API_KEY`, then `OPENCODE_API_KEY` |
+| Cursor | `CURSOR_SESSION_TOKEN`, then Cursor app `state.vscdb`, then Cursor CLI `cursor/auth.json` |
+
+Cursor's app database is read-only: `%APPDATA%/Cursor/User/globalStorage/state.vscdb`
+on Windows, `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` on
+macOS, and `$XDG_CONFIG_HOME/Cursor/User/globalStorage/state.vscdb` (default
+`~/.config/...`) on Linux. CLI credentials are read from
+`$XDG_CONFIG_HOME/cursor/auth.json` (default `~/.config/cursor/auth.json`).
+The plugin derives a `WorkosCursorSessionToken` cookie from a valid app/CLI JWT
+and sends it only to `https://cursor.com/api/usage-summary`, without following
+redirects or refreshing/writing credentials. Encrypted app tokens are not decrypted.
+If needed, set `CURSOR_SESSION_TOKEN` on the OpenCode server to the value of your
+cursor.com `WorkosCursorSessionToken` cookie (or the app JWT). Treat it as a password;
+never commit it or paste it into chat. An explicit manual session never silently
+falls back to another account. Cursor API keys cannot read this dashboard endpoint.
 
 Go uses the official `/zen/go/v1/usage` endpoint, including the signed-in workspace
 when available. Connect OpenCode Console/Go in Settings → Integrations first.
@@ -103,6 +128,16 @@ refresh succeeds. OpenCode's own credential-store tokens are never rotated.
   needed by the usage API.
 - **Claude not connected** → run `claude` and sign in, or set
   `CLAUDE_CODE_OAUTH_TOKEN`.
+- **Cursor not connected** → sign in to Cursor or run `cursor-agent login`, then
+  refresh. Encrypted app credentials require the manual session described above.
+
+### OpenCode free tier
+
+OpenCode's free models do have limits (for example, LongCat 2.5 Free documents a
+100-request daily cap). However, neither the current Console API documentation nor
+OpenCode's usage-limits contract exposes a reliable remaining free-tier allowance.
+Local session counts miss other devices and cannot reproduce server-side limits,
+so this panel deliberately does not invent a percentage or claim unlimited usage.
 
 ## Architecture
 

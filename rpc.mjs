@@ -30,7 +30,7 @@ export const Credits = Rpc.define(
         input: {
           type: 'object',
           properties: {
-            provider: { type: 'string', enum: ['codex', 'copilot', 'claude', 'go'] },
+            provider: { type: 'string', enum: ['codex', 'copilot', 'claude', 'go', 'cursor'] },
           },
           additionalProperties: false,
         },
