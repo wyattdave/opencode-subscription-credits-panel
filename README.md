@@ -1,7 +1,10 @@
 # opencode-subscription-credits-panel
 
 An OpenCode Desktop side-panel plugin that shows remaining account usage for
-**ChatGPT / Codex**, **GitHub Copilot**, and **Claude Code**.
+**ChatGPT / Codex**, **GitHub Copilot**, **Claude Code**, and **OpenCode Go**.
+Copilot shows both the percentage of allowance used and the request count.
+Go shows its reported 5-hour, weekly, and monthly allowance percentages and resets.
+Free-model allowances are not shown: no reliable account-wide usage counter is available.
 
 Everything is resolved on the OpenCode server. The renderer only ever receives
 normalized usage numbers — raw tokens never cross the RPC boundary.
@@ -28,8 +31,8 @@ To undo:
 npx opencode-subscription-credits-panel remove
 ```
 
-Finish by restarting OpenCode (`opencode service restart`) if it is running,
-then open the session side panel and click **+** → **Account usage**.
+OpenCode reloads the configuration automatically. Open the session side panel
+and click **+** → **Account usage**; use `/reload` if a full reload is needed.
 
 ### From npm (manual)
 
@@ -75,6 +78,12 @@ A `Refresh` button re-queries all providers; auto-refresh runs on open.
 | ChatGPT / Codex | `~/.codex/auth.json`, then the OpenCode SQLite credential store (`openai`) |
 | GitHub Copilot | OpenCode SQLite credential store (`github-copilot`), legacy `hosts.json`, env vars |
 | Claude Code | `~/.claude/.credentials.json`, `CLAUDE_CODE_OAUTH_TOKEN` |
+| OpenCode Go | OpenCode SQLite credential store (`opencode`, then `opencode-go`), `OPENCODE_GO_API_KEY`, then `OPENCODE_API_KEY` |
+
+Go uses the official `/zen/go/v1/usage` endpoint, including the signed-in workspace
+when available. Connect OpenCode Console/Go in Settings → Integrations first.
+An unavailable allowance can mean no Go subscription, a different workspace, or
+insufficient API-key permissions. The plugin never renews OpenCode-owned tokens.
 
 Expired OAuth tokens owned by this plugin (Codex and Claude credential files)
 are refreshed server-side and written back to the original file when the
@@ -107,7 +116,7 @@ refresh succeeds. OpenCode's own credential-store tokens are never rotated.
 
 ```powershell
 npm run typecheck        # type-check the GUI sources
-npm test                 # sign-in flow unit tests
+npm test                 # sign-in, installer, and provider/usage tests
 npm run build            # emit dist/gui-experimental.cjs
 node scripts/probe.mjs   # print raw provider results without the UI
 ```

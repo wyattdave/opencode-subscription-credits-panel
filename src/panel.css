@@ -87,6 +87,10 @@
   --oc-accent: #d97757;
 }
 
+.oc-card.oc-go {
+  --oc-accent: #5599cc;
+}
+
 .oc-card-head {
   display: flex;
   align-items: center;
@@ -180,7 +184,8 @@
   background: color-mix(in srgb, var(--oc-low) 8%, transparent);
 }
 
-.oc-badge-loading {
+.oc-badge-loading,
+.oc-badge-unavailable {
   opacity: 0.5;
 }
 

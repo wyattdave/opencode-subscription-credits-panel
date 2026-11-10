@@ -2,6 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { Command, MenuItem, Panel, Plugin, Style } from '@opencode/plugin/gui'
 import { Credits } from '../rpc.mjs'
 import css from './panel.css?inline'
+import { usedText } from './usage-text.mjs'
 
 type UsageWindow = {
   id: string
@@ -16,9 +17,9 @@ type UsageWindow = {
 }
 
 type Provider = {
-  id: 'codex' | 'copilot' | 'claude'
+  id: 'codex' | 'copilot' | 'claude' | 'go'
   name: string
-  status: 'ok' | 'expired' | 'signin' | 'error' | 'loading'
+  status: 'ok' | 'expired' | 'signin' | 'error' | 'loading' | 'unavailable'
   plan: string | null
   account: string | null
   source: string | null
@@ -39,6 +40,7 @@ const ICONS: Record<Provider['id'], string> = {
   codex: 'terminal',
   copilot: 'github',
   claude: 'brain',
+  go: 'terminal',
 }
 
 const PLAN_LABELS: Record<string, string> = {
@@ -88,7 +90,7 @@ export default Plugin.define({
         menu: 'session.panel' as const,
         id: 'credits',
         title: ctx.t('menu.title'),
-        description: 'Codex · Copilot · Claude',
+        description: 'Codex · Copilot · Claude · Go',
         icon: 'window-analytics' as const,
         opened: Boolean(session && ctx.layout.state(`${ctx.id}:credits`, session) !== 'closed'),
         run: open,
@@ -171,7 +173,7 @@ function CreditsPanel(props: { ctx: any; session: any }) {
         <div>
           <p class="oc-eyebrow">Accounts</p>
           <h1>{props.ctx.t('panel.title')}</h1>
-          <p class="oc-tagline">ChatGPT · Copilot · Claude</p>
+           <p class="oc-tagline">ChatGPT · Copilot · Claude · Go</p>
         </div>
         <props.ctx.ui.IconButton
           icon="refresh"
@@ -439,13 +441,6 @@ function UsageRow(props: { window: UsageWindow }) {
     return '—'
   }
 
-  const usedText = () => {
-    if (item().unlimited) return ''
-    if (item().detail) return item().detail ?? ''
-    if (item().usedPercent !== null) return `${Math.round(item().usedPercent as number)}% used`
-    return ''
-  }
-
   return (
     <div class={`oc-window oc-${tone()}`}>
       <div class="oc-window-top">
@@ -460,7 +455,7 @@ function UsageRow(props: { window: UsageWindow }) {
         <div class="oc-meter-fill" style={{ width: `${remaining() ?? 0}%` }} />
       </div>
       <div class="oc-window-bottom">
-        <span>{usedText()}</span>
+        <span>{usedText(item())}</span>
         <span>{resetText(item().resetAt)}</span>
       </div>
     </div>
@@ -503,6 +498,8 @@ function statusLabel(status: Provider['status']) {
       return 'Not connected'
     case 'error':
       return 'Error'
+    case 'unavailable':
+      return 'Unavailable'
     default:
       return 'Loading'
   }

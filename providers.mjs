@@ -18,6 +18,7 @@ const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 const CLAUDE_PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile'
 
 const COPILOT_USAGE_URL = 'https://api.github.com/copilot_internal/user'
+const GO_USAGE_URL = 'https://opencode.ai/zen/go/v1/usage'
 
 const CODEX_AUTH_FILE = join(HOME, '.codex', 'auth.json')
 const CLAUDE_CREDENTIALS_FILE = join(HOME, '.claude', '.credentials.json')
@@ -36,9 +37,10 @@ const PROVIDER_NAMES = {
   codex: 'ChatGPT / Codex',
   copilot: 'GitHub Copilot',
   claude: 'Claude Code',
+  go: 'OpenCode Go',
 }
 
-const PROVIDER_ORDER = ['codex', 'copilot', 'claude']
+const PROVIDER_ORDER = ['codex', 'copilot', 'claude', 'go']
 
 let cache = null
 let inflight = null
@@ -475,7 +477,7 @@ function copilotOrder(key) {
   return 3
 }
 
-function copilotWindow(key, snapshot, resetAt) {
+export function copilotWindow(key, snapshot, resetAt) {
   const unlimited = snapshot?.unlimited === true
   if (unlimited) {
     return {
@@ -498,7 +500,7 @@ function copilotWindow(key, snapshot, resetAt) {
     (entitlement !== null && remaining !== null ? entitlement - remaining : null)
   const percent = clampPercent(
     asNumber(snapshot?.percent_remaining) ??
-      (entitlement && remaining !== null ? (remaining / entitlement) * 100 : null),
+      (entitlement > 0 && used !== null ? (1 - used / entitlement) * 100 : null),
   )
 
   return {
@@ -874,10 +876,75 @@ async function loadClaude() {
 // ---------------------------------------------------------------------------
 // Snapshot API
 
+export function goWindows(usage) {
+  return [
+    ['rolling', '5-hour window'],
+    ['weekly', 'Weekly window'],
+    ['monthly', 'Monthly window'],
+  ].flatMap(([id, label]) => {
+    const raw = usage?.[id]
+    const usedPercent = clampPercent(raw?.percent)
+    const resetAt = toIso(raw?.resetsAt)
+    if (usedPercent === null || !resetAt) return []
+    return [{
+      id, label, usedPercent, remainingPercent: 100 - usedPercent,
+      remaining: null, entitlement: null, resetAt, unlimited: false,
+      detail: raw.status === 'rate-limited' ? 'Allowance reached' : null,
+    }]
+  })
+}
+
+async function loadGo() {
+  const creds = await readDbCredential('opencode') ?? await readDbCredential('opencode-go')
+  const token = creds?.type === 'oauth' ? creds.access : creds?.key
+  const key = token || process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_API_KEY
+  const source = token ? 'OpenCode credential store' : 'Environment'
+  const identity = {
+    source,
+    account: creds?.metadata?.email ?? null,
+    plan: 'OpenCode Go',
+  }
+  if (!key) return baseProvider('go', {
+    status: 'signin', source: 'No credentials',
+    message: 'Connect OpenCode Console or OpenCode Go in Settings → Integrations to read your allowance.',
+  })
+
+  // Use only the official origin; never forward stored credentials to custom URLs.
+  const orgID = creds?.metadata?.orgID
+  const response = await fetchResponse(GO_USAGE_URL, {
+    headers: {
+      Authorization: `Bearer ${key}`, Accept: 'application/json',
+      'User-Agent': 'opencode-subscription-credits-panel',
+      ...(typeof orgID === 'string' ? { 'x-opencode-org-id': orgID } : {}),
+    },
+    redirect: 'error',
+  })
+  if (response.status === 401) return baseProvider('go', {
+    ...identity, status: 'expired',
+    message: 'OpenCode sign-in has expired. Reconnect OpenCode in Settings → Integrations.',
+  })
+  if (response.status === 403) return baseProvider('go', {
+    ...identity, status: 'unavailable',
+    message: 'Go allowance is unavailable for this connection. Check your Go subscription, workspace and key permissions in the OpenCode Console.',
+  })
+  if (!response.ok) return baseProvider('go', {
+    ...identity, message: `OpenCode Go usage request failed (HTTP ${response.status}).`,
+  })
+  const windows = goWindows(response.body?.usage)
+  if (windows.length !== 3) return baseProvider('go', {
+    ...identity, message: 'OpenCode Go returned incomplete allowance data.',
+  })
+  return baseProvider('go', {
+    ...identity, status: 'ok', windows,
+    note: 'Subscription allowance reported by OpenCode Go; free-model limits are separate.',
+  })
+}
+
 const LOADERS = {
   codex: loadCodex,
   copilot: loadCopilot,
   claude: loadClaude,
+  go: loadGo,
 }
 
 function publicSnapshot() {
